@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+ï»¿/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -111,8 +111,10 @@ int main(void)
   /* USER CODE BEGIN 2 */
   // HAL_UART_Transmit(&huart1, (uint8_t *)"Hello World!\n", 13, 1000);
 
+  HAL_UART_Transmit(&huart3, (uint8_t*)"UART3_OK\r\n", 10, 100);
+  App_FreeRTOS_start(); // ï¿½ï¿½ï¿½ï¿½FreeRTOSï¿½ï¿½ï¿½ï¿½
   // printf("Hello World!\n");
-  App_FreeRTOS_start(); // Æô¶¯FreeRTOSÈÎÎñ
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
