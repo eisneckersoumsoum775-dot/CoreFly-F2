@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoreFly 遥控器 UI (320x240)</title>
+<style>
+  .zoom-ctrl {
+    position: fixed; top: 12px; right: 16px; z-index: 9999;
+    background: #1a1f2e; border: 1px solid #2a3540; border-radius: 8px;
+    padding: 8px 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .zoom-ctrl label { color: #6b7b8a; font-size: 11px; font-family: monospace; }
+  .zoom-ctrl input[type=range] { width: 100px; accent-color: #00e5ff; }
+  .zoom-ctrl button { background: #131b24; color: #00e5ff; border: 1px solid #007a8c; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 11px; }
+  .zoom-ctrl button:hover { background: #007a8c; color: #fff; }
+  .zoom-ctrl .val { color: #00e5ff; font-size: 11px; min-width: 36px; text-align: center; }
+  .wrapper { transform: scale(1); transform-origin: top center; transition: transform 0.1s; }
+  :root {
+    --bg: #0a0f14; --panel: #131b24; --border: #1e2d3d;
+    --cyan: #00e5ff; --orange: #ff9100; --red: #ff3d3d; --green: #00e676;
+    --white: #e0e0e0; --gray: #6b7b8a; --gray-dim: #3a4550;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #080c10; display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; font-family: 'Microsoft YaHei','PingFang SC',sans-serif;
+  }
+  .remote {
+    display: flex; gap: 16px; align-items: center;
+    background: #1a1f2e; border-radius: 22px; padding: 24px 20px;
+    box-shadow: 0 0 0 2px #0d1117,0 0 0 4px #232a38,0 18px 40px rgba(0,0,0,0.6);
+    position: relative;
+  }
+  .remote::before {
+    content: 'CoreFly 遥控器'; position: absolute; top: -28px; left: 50%;
+    transform: translateX(-50%); color: #4a5568; font-size: 10px; letter-spacing: 3px;
+  }
+  .lcd-frame {
+    width: 320px; height: 240px; background: #0a0f14; border-radius: 10px;
+    overflow: hidden; border: 3px solid #1a2430; position: relative;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.5),0 0 0 5px #151d28,0 6px 20px rgba(0,0,0,0.5);
+  }
+  .lcd-frame::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg,rgba(255,255,255,0.02) 0%,transparent 40%,rgba(0,0,0,0.06) 100%);
+    pointer-events: none; z-index: 99; border-radius: 10px;
+  }
+  .screen { width:100%;height:100%;background:var(--bg);display:flex;flex-direction:column;padding:3px 5px;gap:2px;font-size:8px;position:relative;z-index:1; }
+  .status-bar { display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:2px 5px;height:20px;flex-shrink:0; }
+  .status-bar .L,.status-bar .R { display:flex;align-items:center;gap:5px; }
+  .bat { display:flex;align-items:center;gap:3px;color:var(--cyan);font-size:8px; }
+  .bat .icon { width:16px;height:8px;border:1.5px solid var(--cyan);border-radius:2px;position:relative; }
+  .bat .icon::after { content:'';position:absolute;right:-3px;top:1px;width:2px;height:4px;background:var(--cyan);border-radius:1px; }
+  .bat .fill { height:100%;background:var(--cyan);border-radius:1px; }
+  .sig { display:flex;align-items:flex-end;gap:1.5px;height:9px; }
+  .sig .b { width:3px;background:var(--cyan);border-radius:1px; }
+  .sig .b.off { background:var(--gray-dim); }
+  .sig .rssi { font-size:7px;color:var(--gray);margin-left:2px; }
+  .mode-tag { padding:1px 5px;border-radius:2px;font-size:7px;font-weight:bold;letter-spacing:1px; }
+  .mode-tag.on { background:#007a8c;color:var(--cyan);border:1px solid var(--cyan); }
+  .main-row { display:flex;gap:4px;flex:1;min-height:0; }
+  .horizon-wrap { flex:1;background:var(--panel);border:1px solid var(--border);border-radius:5px;overflow:hidden;position:relative; }
+  .horizon canvas { position:absolute;inset:0; }
+  .hud { position:absolute;top:3px;left:3px;display:flex;flex-direction:column;gap:1px;z-index:3;pointer-events:none; }
+  .hud span { font-size:6px;color:var(--white);background:rgba(0,0,0,0.5);padding:1px 3px;border-radius:2px; }
+  .cross { position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none; }
+  .cross .hl { width:18px;height:1px;background:var(--orange);position:absolute;top:0;left:-9px; }
+  .cross .vl { width:1px;height:18px;background:var(--orange);position:absolute;top:-9px;left:0; }
+  .cross .dt { width:3px;height:3px;background:var(--orange);border-radius:50%;position:absolute;top:-1.5px;left:-1.5px; }
+  .side-bar { width:68px;display:flex;flex-direction:column;gap:3px;flex-shrink:0; }
+  .chans { background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:3px 4px;display:flex;flex-direction:column;gap:2px;flex:1; }
+  .cr { display:flex;align-items:center;justify-content:space-between; }
+  .cr .lb { color:var(--gray);font-size:6px; }
+  .cr .vl { color:var(--white);font-size:7px; }
+  .cbar { height:2px;background:var(--gray-dim);border-radius:1px;overflow:hidden; }
+  .cbar .f { height:100%;border-radius:1px;transition:width 0.2s; }
+  .f.thr { background:var(--orange); } .f.yaw { background:#e0a800; }
+  .f.pit { background:var(--cyan); } .f.rol { background:#64ffda; }
+  .arm-box { background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:4px;display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0; }
+  .arm-dot { width:34px;height:34px;border-radius:50%;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:bold;color:var(--red);transition:all 0.3s; }
+  .arm-dot.on { border-color:var(--green);color:var(--green);animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 5px rgba(0,230,118,0.3)} 50%{box-shadow:0 0 12px rgba(0,230,118,0.5)} }
+  .fm { font-size:7px;color:var(--cyan);letter-spacing:1px;text-align:center; }
+  .info-strip { display:flex;justify-content:space-between;font-size:6px;color:var(--gray);padding:0 2px;flex-shrink:0;height:10px;align-items:center; }
+  .info-strip .timer { color:var(--white);font-size:7px; }
+  .gimbal { display:flex;flex-direction:column;gap:10px;justify-content:center; }
+  .g-dot { width:38px;height:38px;border:1.5px solid #2a3540;border-radius:50%;background:radial-gradient(circle,#1a2430,#0d1117);position:relative; }
+  .g-dot .p { width:3px;height:3px;border-radius:50%;position:absolute; }
+  .g-dot .lb { position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);font-size:6px;color:#4a5568; }
+</style>
+</head>
+<body>
+<div class="zoom-ctrl">
+  <label>缩放</label>
+  <input type="range" min="50" max="200" value="100" oninput="document.querySelector('.wrapper').style.transform='scale('+(this.value/100)+')';document.querySelector('.val').textContent=this.value+'%'">
+  <span class="val">100%</span>
+  <button onclick="document.querySelector('input').value=100;document.querySelector('.wrapper').style.transform='scale(1)';document.querySelector('.val').textContent='100%'">重置</button>
+</div>
+<div class="wrapper">
+<div class="remote">
+  <div class="gimbal">
+    <div class="g-dot"><div class="p" style="background:#ff9100;top:32%;left:48%;box-shadow:0 0 4px #ff9100;"></div><div class="lb">油门</div></div>
+    <div class="g-dot"><div class="p" style="background:#00e5ff;top:40%;left:58%;box-shadow:0 0 4px #00e5ff;"></div><div class="lb">偏航</div></div>
+  </div>
+
+  <div class="lcd-frame">
+    <div class="screen" id="screen">
+      <div class="status-bar">
+        <div class="L">
+          <div class="bat">
+            <span class="icon"><div class="fill" style="width:72%"></div></span>
+            <span id="batVolt">12.4V</span>
+          </div>
+        </div>
+        <div class="R">
+          <div class="sig">
+            <span class="b" style="height:3px"></span><span class="b" style="height:5px"></span>
+            <span class="b" style="height:7px"></span><span class="b" style="height:9px"></span>
+            <span class="b off" style="height:9px"></span>
+            <span class="rssi" id="rssi">-82dB</span>
+          </div>
+          <span class="mode-tag on" id="modeTag">自稳</span>
+        </div>
+      </div>
+
+      <div class="main-row">
+        <div class="horizon-wrap" id="hzWrap">
+          <canvas id="hz"></canvas>
+          <div class="cross"><div class="hl"></div><div class="vl"></div><div class="dt"></div></div>
+          <div class="hud">
+            <span id="altVal">高度 0.0m</span>
+            <span id="spdVal">速度 0.0</span>
+            <span id="headVal">航向 0°</span>
+          </div>
+        </div>
+
+        <div class="side-bar">
+          <div class="chans">
+            <div class="cr"><span class="lb">油门</span><span class="vl" id="thrVal">1500</span></div>
+            <div class="cbar"><div class="f thr" style="width:50%" id="thrBar"></div></div>
+            <div class="cr" style="margin-top:1px"><span class="lb">偏航</span><span class="vl" id="yawVal">1500</span></div>
+            <div class="cbar"><div class="f yaw" style="width:50%" id="yawBar"></div></div>
+            <div class="cr" style="margin-top:1px"><span class="lb">俯仰</span><span class="vl" id="pitVal">1500</span></div>
+            <div class="cbar"><div class="f pit" style="width:50%" id="pitBar"></div></div>
+            <div class="cr" style="margin-top:1px"><span class="lb">滚转</span><span class="vl" id="rolVal">1500</span></div>
+            <div class="cbar"><div class="f rol" style="width:50%" id="rolBar"></div></div>
+          </div>
+          <div class="arm-box">
+            <div class="arm-dot" id="armDot">锁定</div>
+            <div class="fm" id="fmLabel">未解锁</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-strip">
+        <span>星数 12</span>
+        <span class="timer" id="flyTimer">00:00</span>
+        <span>GPS 0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="gimbal">
+    <div class="g-dot"><div class="p" style="background:#00e5ff;top:28%;left:44%;box-shadow:0 0 4px #00e5ff;"></div><div class="lb">俯仰</div></div>
+    <div class="g-dot"><div class="p" style="background:#64ffda;top:24%;left:62%;box-shadow:0 0 4px #64ffda;"></div><div class="lb">滚转</div></div>
+  </div>
+</div>
+
+<script>
+const cv=document.getElementById('hz'),cx=cv.getContext('2d');
+const wr=document.getElementById('hzWrap');
+function rs(){const r=wr.getBoundingClientRect();cv.width=r.width;cv.height=r.height;}
+rs();window.addEventListener('resize',()=>{rs();draw(0,0);});
+
+function draw(roll,pitch){
+  const W=cv.width,H=cv.height,mx=W/2,my=H/2;
+  cx.clearRect(0,0,W,H);
+  const po=(pitch/90)*H*0.5;
+  cx.save();cx.translate(mx,my);cx.rotate(-(roll*Math.PI)/180);
+  const sg=cx.createLinearGradient(0,-H,0,0);sg.addColorStop(0,'#0d1b3e');sg.addColorStop(1,'#1a3a6e');
+  cx.fillStyle=sg;cx.fillRect(-W,-H+po,W*2,H);
+  const gg=cx.createLinearGradient(0,0,0,H);gg.addColorStop(0,'#5d3a1a');gg.addColorStop(1,'#2a1508');
+  cx.fillStyle=gg;cx.fillRect(-W,po,W*2,H);
+  cx.strokeStyle='#fff';cx.lineWidth=1.2;cx.beginPath();cx.moveTo(-W,po);cx.lineTo(W,po);cx.stroke();
+  cx.strokeStyle='rgba(255,255,255,0.35)';cx.lineWidth=0.5;
+  for(let d=-50;d<=50;d+=10){
+    const y=po-(d/90)*H*0.5;if(y<-H||y>H)continue;
+    const len=d%20===0?18:10;
+    cx.beginPath();cx.moveTo(-len,y);cx.lineTo(len,y);cx.stroke();
+    if(d%20===0){cx.font='6px sans-serif';cx.fillStyle='#999';cx.fillText(Math.abs(d),-len-13,y+2);cx.fillText(Math.abs(d),len+4,y+2);}
+  }
+  cx.restore();
+  const r0=Math.min(W,H)*0.35;
+  cx.save();cx.translate(mx,my);
+  cx.strokeStyle='#6b7b8a';cx.lineWidth=0.5;
+  for(let a=-50;a<=50;a+=10){
+    const rad=-(a*Math.PI)/180,r1=r0-(a%30===0?5:3),r2=r0;
+    cx.beginPath();cx.moveTo(Math.sin(rad)*r1,-Math.cos(rad)*r1);cx.lineTo(Math.sin(rad)*r2,-Math.cos(rad)*r2);cx.stroke();
+  }
+  const pr=-(roll*Math.PI)/180;
+  cx.fillStyle='#ff9100';cx.beginPath();cx.arc(Math.sin(pr)*(r0-7),-Math.cos(pr)*(r0-7),2.5,0,Math.PI*2);cx.fill();
+  cx.restore();
+}
+
+let roll=0,pitch=0,armed=false;
+const modes=['自稳','定高','手动','定点'];let mi=0;
+function rw(v,r){return Math.max(-r,Math.min(r,v+(Math.random()-0.5)*8));}
+
+function update(){
+  if(armed){roll=rw(roll,28);pitch=rw(pitch,20);}
+  else{roll*=0.9;pitch*=0.9;}
+  const thr=armed?Math.round(1500+(Math.max(0,pitch)/20)*500):1000;
+  const yaw=Math.round(1500+(roll/28)*500);
+  const pit=Math.round(1500+(pitch/20)*500);
+  const rol=Math.round(1500+(roll/28)*500);
+  draw(roll,pitch);
+  document.getElementById('thrVal').textContent=thr;
+  document.getElementById('yawVal').textContent=yaw;
+  document.getElementById('pitVal').textContent=pit;
+  document.getElementById('rolVal').textContent=rol;
+  document.getElementById('thrBar').style.width=((thr-1000)/10)+'%';
+  document.getElementById('yawBar').style.width=((yaw-1000)/10)+'%';
+  document.getElementById('pitBar').style.width=((pit-1000)/10)+'%';
+  document.getElementById('rolBar').style.width=((rol-1000)/10)+'%';
+  document.getElementById('altVal').textContent='高度 '+(Math.random()*5).toFixed(1)+'m';
+  document.getElementById('spdVal').textContent='速度 '+(Math.random()*3).toFixed(1);
+  document.getElementById('headVal').textContent='航向 '+Math.round(Math.random()*360)+'°';
+  document.getElementById('batVolt').textContent=(11.1+Math.random()*0.5).toFixed(1)+'V';
+  document.getElementById('rssi').textContent='-'+Math.round(75+Math.random()*15)+'dB';
+  if(armed&&Math.random()<0.08)mi=(mi+1)%modes.length;
+}
+
+document.getElementById('screen').addEventListener('click',()=>{
+  armed=!armed;
+  const a=document.getElementById('armDot'),t=document.getElementById('modeTag'),f=document.getElementById('fmLabel');
+  if(armed){a.textContent='解锁';a.classList.add('on');t.textContent='自稳';f.textContent=modes[0];}
+  else{a.textContent='锁定';a.classList.remove('on');t.textContent='----';f.textContent='未解锁';}
+});
+setInterval(update,150);
+draw(0,0);
+</script>
+</div></body>
+</html>

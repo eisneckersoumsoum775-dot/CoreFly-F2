@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoreFly 遥控器 UI (3D无人机)</title>
+<style>
+  .zoom-ctrl{position:fixed;top:12px;right:16px;z-index:9999;background:#1a1f2e;border:1px solid #2a3540;border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px}
+  .zoom-ctrl label{color:#6b7b8a;font-size:11px;font-family:monospace}
+  .zoom-ctrl input[type=range]{width:100px;accent-color:#00e5ff}
+  .zoom-ctrl button{background:#131b24;color:#00e5ff;border:1px solid #007a8c;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px}
+  .zoom-ctrl button:hover{background:#007a8c;color:#fff}
+  .zoom-ctrl .val{color:#00e5ff;font-size:11px;min-width:36px;text-align:center}
+  .wrapper{transform:scale(1);transform-origin:top center;transition:transform 0.1s}
+  :root{--bg:#0a0f14;--panel:#131b24;--border:#1e2d3d;--cyan:#00e5ff;--orange:#ff9100;--red:#ff3d3d;--green:#00e676;--white:#e0e0e0;--gray:#6b7b8a;--gray-dim:#3a4550}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#080c10;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'Microsoft YaHei','PingFang SC',sans-serif}
+  .remote{display:flex;gap:16px;align-items:center;background:#1a1f2e;border-radius:22px;padding:24px 20px;box-shadow:0 0 0 2px #0d1117,0 0 0 4px #232a38,0 18px 40px rgba(0,0,0,0.6);position:relative}
+  .remote::before{content:'CoreFly 遥控器';position:absolute;top:-28px;left:50%;transform:translateX(-50%);color:#4a5568;font-size:10px;letter-spacing:3px}
+  .lcd-frame{width:320px;height:240px;background:#0a0f14;border-radius:10px;overflow:hidden;border:3px solid #1a2430;position:relative;box-shadow:inset 0 0 30px rgba(0,0,0,0.5),0 0 0 5px #151d28,0 6px 20px rgba(0,0,0,0.5)}
+  .lcd-frame::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.02) 0%,transparent 40%,rgba(0,0,0,0.06) 100%);pointer-events:none;z-index:99;border-radius:10px}
+  .screen{width:100%;height:100%;background:var(--bg);display:flex;flex-direction:column;padding:3px 5px;gap:2px;font-size:8px;position:relative;z-index:1}
+  .status-bar{display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:2px 5px;height:20px;flex-shrink:0}
+  .status-bar .L,.status-bar .R{display:flex;align-items:center;gap:5px}
+  .bat{display:flex;align-items:center;gap:3px;color:var(--cyan);font-size:8px}
+  .bat .icon{width:16px;height:8px;border:1.5px solid var(--cyan);border-radius:2px;position:relative}
+  .bat .icon::after{content:'';position:absolute;right:-3px;top:1px;width:2px;height:4px;background:var(--cyan);border-radius:1px}
+  .bat .fill{height:100%;background:var(--cyan);border-radius:1px}
+  .sig{display:flex;align-items:flex-end;gap:1.5px;height:9px}
+  .sig .b{width:3px;background:var(--cyan);border-radius:1px}
+  .sig .b.off{background:var(--gray-dim)}
+  .sig .rssi{font-size:7px;color:var(--gray);margin-left:2px}
+  .mods{display:flex;align-items:center;gap:4px}
+  .mod{display:flex;align-items:center;gap:2px;font-size:6px;color:var(--gray)}
+  .mod .dot{width:5px;height:5px;border-radius:50%}
+  .mod .dot.ok{background:var(--green)}
+  .mod .dot.err{background:var(--red)}
+  .mode-tag{padding:1px 5px;border-radius:2px;font-size:7px;font-weight:bold;letter-spacing:1px}
+  .mode-tag.on{background:#007a8c;color:var(--cyan);border:1px solid var(--cyan)}
+  .main-row{display:flex;gap:4px;flex:1;min-height:0}
+  .drone-wrap{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:5px;overflow:hidden;position:relative}
+  .drone-wrap canvas{position:absolute;inset:0}
+  .drone-hud{position:absolute;inset:0;pointer-events:none;z-index:3;display:flex;flex-direction:column;justify-content:space-between;padding:4px 5px}
+  .drone-hud .hu{display:flex;justify-content:space-between}
+  .drone-hud .ht{font-size:7px;color:var(--white);background:rgba(0,0,0,0.55);padding:1px 4px;border-radius:2px}
+  .drone-hud .ht.v{color:var(--cyan);font-size:8px;font-weight:bold}
+  .side-bar{width:72px;display:flex;flex-direction:column;gap:3px;flex-shrink:0;justify-content:space-between}
+  .chans{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;gap:3px;flex:1}
+  /* ── Throttle (big vertical) ── */
+  .thr-section{display:flex;flex-direction:column;align-items:center;gap:1px;flex:1}
+  .thr-label{color:var(--gray);font-size:6px;letter-spacing:1px}
+  .thr-value{color:var(--orange);font-size:11px;font-weight:bold}
+  .thr-pct{color:var(--gray);font-size:6px}
+  .thr-vbar{flex:1;width:10px;background:var(--gray-dim);border-radius:3px;position:relative;overflow:hidden;min-height:30px}
+  .thr-vbar .fill{position:absolute;bottom:0;left:0;right:0;background:var(--orange);border-radius:3px;transition:height 0.2s}
+  .thr-vbar .tick{position:absolute;left:-3px;right:-3px;height:1px;background:rgba(255,255,255,0.15)}
+  .thr-end{display:flex;justify-content:space-between;width:100%;font-size:5px;color:var(--gray-dim)}
+  /* ── Other channels ── */
+  .ch-row{display:flex;flex-direction:column;gap:1px;border-top:1px solid var(--border);padding-top:2px}
+  .cr{display:flex;align-items:center;justify-content:space-between}
+  .cr .lb{color:var(--gray);font-size:6px}
+  .cr .vl{color:var(--white);font-size:7px}
+  .cbar{height:3px;background:var(--gray-dim);border-radius:1.5px;overflow:hidden;position:relative}
+  .cbar .f{height:100%;border-radius:1.5px;transition:width 0.2s}
+  .cbar .ctr{position:absolute;top:-1px;bottom:-1px;left:50%;width:1px;background:rgba(255,255,255,0.2);z-index:2}
+  .f.thrbar{background:var(--orange)} .f.yaw{background:#e0a800}
+  .f.pit{background:var(--cyan)} .f.rol{background:#64ffda}
+  .info-box{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:4px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0}
+  .pwr-sq{width:38px;height:22px;border-radius:3px;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:bold;color:#fff;transition:background 0.3s}
+  .pwr-sq.on{background:var(--green);box-shadow:0 0 6px rgba(0,230,118,0.5)}
+  .gimbal{display:flex;flex-direction:column;gap:10px;justify-content:center}
+  .g-dot{width:38px;height:38px;border:1.5px solid #2a3540;border-radius:50%;background:radial-gradient(circle,#1a2430,#0d1117);position:relative}
+  .g-dot .p{width:3px;height:3px;border-radius:50%;position:absolute}
+  .g-dot .lb{position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);font-size:6px;color:#4a5568}
+</style>
+</head>
+<body>
+<div class="zoom-ctrl">
+  <label>缩放</label>
+  <input type="range" min="50" max="200" value="100" oninput="document.querySelector('.wrapper').style.transform='scale('+(this.value/100)+')';document.querySelector('.val').textContent=this.value+'%'">
+  <span class="val">100%</span>
+  <button onclick="document.querySelector('input').value=100;document.querySelector('.wrapper').style.transform='scale(1)';document.querySelector('.val').textContent='100%'">重置</button>
+</div>
+<div class="wrapper">
+<div class="remote">
+  <div class="gimbal">
+    <div class="g-dot"><div class="p" style="background:#ff9100;top:32%;left:48%;box-shadow:0 0 4px #ff9100"></div><div class="lb">油门</div></div>
+    <div class="g-dot"><div class="p" style="background:#00e5ff;top:40%;left:58%;box-shadow:0 0 4px #00e5ff"></div><div class="lb">偏航</div></div>
+  </div>
+
+  <div class="lcd-frame">
+    <div class="screen" id="screen">
+      <div class="status-bar">
+        <div class="L">
+          <div class="bat">
+            <span class="icon"><div class="fill" style="width:72%"></div></span>
+            <span id="batVolt">12.4V</span>
+          </div>
+        </div>
+        <div class="R">
+          <div class="mods">
+            <div class="mod"><span class="dot ok" id="modComm"></span>通信</div>
+            <div class="mod"><span class="dot ok" id="modAtti"></span>姿态</div>
+            <div class="mod"><span class="dot ok" id="modBaro"></span>气压</div>
+          </div>
+          <div class="sig">
+            <span class="b" style="height:3px"></span><span class="b" style="height:5px"></span>
+            <span class="b" style="height:7px"></span><span class="b" style="height:9px"></span>
+            <span class="b off" style="height:9px"></span>
+            <span class="rssi" id="rssi">-82dB</span>
+          </div>
+          <span class="mode-tag on" id="modeTag">自稳</span>
+        </div>
+      </div>
+
+      <div class="main-row">
+        <div class="drone-wrap" id="droneWrap">
+          <canvas id="drone3d"></canvas>
+          <div class="drone-hud">
+            <div class="hu"><span class="ht v" id="altVal">0.0m</span><span class="ht v" id="spdVal">0.0m/s</span></div>
+            <div></div>
+            <div class="hu"><span class="ht" id="headVal">HDG 0&#176;</span><span class="ht" id="gpsVal">GPS 12</span></div>
+          </div>
+        </div>
+
+        <div class="side-bar">
+          <div class="chans">
+            <div class="thr-section">
+              <span class="thr-label">油门</span>
+              <span class="thr-value" id="thrVal">0%</span>
+              <span class="thr-pct" id="thrPwm">1000</span>
+              <div class="thr-vbar" id="thrVBar">
+                <div class="fill" style="height:0%" id="thrFill"></div>
+                <div class="tick" style="bottom:25%"></div>
+                <div class="tick" style="bottom:50%"></div>
+                <div class="tick" style="bottom:75%"></div>
+              </div>
+              <div class="thr-end"><span>2000</span><span>1500</span><span>1000</span></div>
+            </div>
+            <div class="ch-row">
+              <div class="cr"><span class="lb">偏航</span><span class="vl" id="yawVal">1500</span></div>
+              <div class="cbar"><div class="ctr"></div><div class="f yaw" style="width:50%" id="yawBar"></div></div>
+            </div>
+            <div class="ch-row">
+              <div class="cr"><span class="lb">俯仰</span><span class="vl" id="pitVal">1500</span></div>
+              <div class="cbar"><div class="ctr"></div><div class="f pit" style="width:50%" id="pitBar"></div></div>
+            </div>
+            <div class="ch-row">
+              <div class="cr"><span class="lb">滚转</span><span class="vl" id="rolVal">1500</span></div>
+              <div class="cbar"><div class="ctr"></div><div class="f rol" style="width:50%" id="rolBar"></div></div>
+            </div>
+          </div>
+          <div class="info-box">
+            <div class="pwr-sq" id="pwrSq">OFF</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="gimbal">
+    <div class="g-dot"><div class="p" style="background:#00e5ff;top:28%;left:44%;box-shadow:0 0 4px #00e5ff"></div><div class="lb">俯仰</div></div>
+    <div class="g-dot"><div class="p" style="background:#64ffda;top:24%;left:62%;box-shadow:0 0 4px #64ffda"></div><div class="lb">滚转</div></div>
+  </div>
+</div>
+</div>
+<script>
+const cv = document.getElementById('drone3d');
+const ctx = cv.getContext('2d');
+const wrap = document.getElementById('droneWrap');
+
+function resize() {
+  const r = wrap.getBoundingClientRect();
+  cv.width = r.width;
+  cv.height = r.height;
+}
+resize();
+window.addEventListener('resize', () => { resize(); draw(0, 0, 0); });
+
+// Camera & model constants
+const CAM_Y = 22, CAM_Z = -55, FL = 55, SCALE = 1.7, GROUND_Y = -20;
+const SQ2 = Math.SQRT2;
+const ARMS = [
+  { id:'FR', sx: 1, sz: 1 },
+  { id:'FL', sx:-1, sz: 1 },
+  { id:'BR', sx: 1, sz:-1 },
+  { id:'BL', sx:-1, sz:-1 },
+];
+const ARM_LEN  = 32;
+const ARM_H    = 0.6;
+const ARM_HT   = 0.3;
+const MOTOR_HR = 8;
+const MOTOR_R  = 2.8;
+const PROP_R   = 15;
+const BODY_W   = 15;
+const BODY_L   = 12;
+
+
+// 3D projection
+function project(wx, wy, wz) {
+  const cx = wx, cy = wy - CAM_Y, cz = wz - CAM_Z;
+  if (cz <= 1) return null;
+  const k = FL / cz * SCALE;
+  return { x: cx * k, y: -cy * k, z: cz, k };
+}
+
+function rp(lx, ly, lz, roll, pitch) {
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const y1 = ly * cp - lz * sp;
+  const z1 = ly * sp + lz * cp;
+  const cr = Math.cos(roll), sr = Math.sin(roll);
+  return project(lx * cr - y1 * sr, lx * sr + y1 * cr, z1);
+}
+
+// Ground grid
+function drawGround(cx, cy) {
+  const W = cv.width, H = cv.height;
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 0.4;
+  for (let z = -60; z <= 60; z += 10) {
+    ctx.beginPath();
+    let active = false;
+    for (let x = -60; x <= 60; x += 3) {
+      const p = project(x, GROUND_Y, z);
+      if (!p || p.y + cy < -20 || p.y + cy > H + 20) { active = false; continue; }
+      if (!active) { ctx.moveTo(cx + p.x, cy + p.y); active = true; }
+      else ctx.lineTo(cx + p.x, cy + p.y);
+    }
+    ctx.stroke();
+  }
+  for (let x = -60; x <= 60; x += 10) {
+    ctx.beginPath();
+    let active = false;
+    for (let z = -60; z <= 60; z += 3) {
+      const p = project(x, GROUND_Y, z);
+      if (!p || p.y + cy < -20 || p.y + cy > H + 20) { active = false; continue; }
+      if (!active) { ctx.moveTo(cx + p.x, cy + p.y); active = true; }
+      else ctx.lineTo(cx + p.x, cy + p.y);
+    }
+    ctx.stroke();
+  }
+  const pc = project(0, GROUND_Y, 0);
+  if (pc) {
+    const sx = cx + pc.x, sy = cy + pc.y, cr = 8 * (FL / pc.z) * SCALE;
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(sx - cr, sy); ctx.lineTo(sx - cr * 0.25, sy);
+    ctx.moveTo(sx + cr * 0.25, sy); ctx.lineTo(sx + cr, sy);
+    ctx.moveTo(sx, sy - cr); ctx.lineTo(sx, sy - cr * 0.25);
+    ctx.moveTo(sx, sy + cr * 0.25); ctx.lineTo(sx, sy + cr);
+    ctx.stroke();
+  }
+}
+
+// Tapered arm polygon
+function drawArmPoly(cx, cy, bx, by, mx, my, isFront) {
+  const dx = mx - bx, dy = my - by, len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1) return;
+  const nx = -dy / len, ny = dx / len;
+  const iw = 3.8, ow = 1.6;
+  const p0x = bx + nx * iw, p0y = by + ny * iw;
+  const p1x = bx - nx * iw, p1y = by - ny * iw;
+  const p2x = mx - nx * ow, p2y = my - ny * ow;
+  const p3x = mx + nx * ow, p3y = my + ny * ow;
+  const grad = ctx.createLinearGradient(bx, by, mx, my);
+  if (isFront) {
+    grad.addColorStop(0, '#3a4050'); grad.addColorStop(0.5, '#2a3040'); grad.addColorStop(1, '#1e2430');
+  } else {
+    grad.addColorStop(0, '#2a2830'); grad.addColorStop(0.5, '#1e2030'); grad.addColorStop(1, '#151820');
+  }
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(p0x, p0y); ctx.lineTo(p3x, p3y); ctx.lineTo(p2x, p2y); ctx.lineTo(p1x, p1y);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = isFront ? 'rgba(0,229,255,0.25)' : 'rgba(255,145,0,0.15)';
+  ctx.lineWidth = 0.6; ctx.stroke();
+}
+
+// Motor — solid cylinder
+function drawMotor(sx, sy, r, isFront) {
+  if (r < 2) return;
+  const bh = r * 2.2; // cylinder height
+
+  // Bottom cap
+  const bGrad = ctx.createRadialGradient(sx, sy + bh, r * 0.1, sx, sy + bh, r);
+  bGrad.addColorStop(0, '#1a2028');
+  bGrad.addColorStop(1, '#0d1118');
+  ctx.fillStyle = bGrad;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + bh, r, r * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Cylinder body
+  const bodyGrad = ctx.createLinearGradient(sx - r, 0, sx + r, 0);
+  bodyGrad.addColorStop(0, '#10151c');
+  bodyGrad.addColorStop(0.25, '#1e2630');
+  bodyGrad.addColorStop(0.5, '#36404e');
+  bodyGrad.addColorStop(0.75, '#1e2630');
+  bodyGrad.addColorStop(1, '#10151c');
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(sx - r, sy);
+  ctx.lineTo(sx - r, sy + bh);
+  ctx.ellipse(sx, sy + bh, r, r * 0.45, 0, Math.PI, Math.PI * 2, false);
+  ctx.lineTo(sx + r, sy);
+  ctx.ellipse(sx, sy, r, r * 0.45, 0, 0, Math.PI, true);
+  ctx.closePath();
+  ctx.fill();
+
+  // Body highlight edge
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 0.4;
+  ctx.stroke();
+
+  // Top cap
+  const topGrad = ctx.createRadialGradient(sx - r * 0.2, sy - r * 0.1, 0, sx, sy, r);
+  topGrad.addColorStop(0, '#788090');
+  topGrad.addColorStop(0.4, '#4a5560');
+  topGrad.addColorStop(1, '#283040');
+  ctx.fillStyle = topGrad;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, r, r * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#667080';
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+
+  // Cooling vents
+  if (r > 4) {
+    ctx.strokeStyle = 'rgba(200,210,220,0.12)';
+    ctx.lineWidth = 0.35;
+    const n = 7;
+    for (let i = 0; i < n; i++) {
+      const vx = sx + (r - 1.5) * Math.sin(i / n * Math.PI * 2);
+      ctx.beginPath();
+      ctx.moveTo(vx, sy + r * 0.5);
+      ctx.lineTo(vx, sy + bh - r * 0.4);
+      ctx.stroke();
+    }
+  }
+
+  // Center nut on top
+  ctx.fillStyle = '#889098';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, r * 0.16, r * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 0.3;
+  ctx.stroke();
+}
+
+// Shaped propeller blades
+function drawPropAt(cx, cy, ax, az, roll, pitch, propAng, armIdx, mTopZ) {
+  const discR = PROP_R * (FL / mTopZ) * SCALE;
+  if (discR < 2.5) return;
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const cr = Math.cos(roll), sr = Math.sin(roll);
+  function bv(lx, lz) {
+    const y1 = MOTOR_HR * cp - lz * sp, z1 = MOTOR_HR * sp + lz * cp;
+    const x2 = lx * cr - y1 * sr, y2 = lx * sr + y1 * cr;
+    return project(x2, y2, z1);
+  }
+  for (let b = 0; b < 2; b++) {
+    const ang = propAng + b * Math.PI / 2 + armIdx * 0.4;
+    const pts = [];
+    const shape = [
+      { r: 1.0,  a: 0 },
+      { r: 0.58, a: 0.20 },
+      { r: 0.22, a: 0.55 },
+      { r: 0.22, a: -0.55 },
+      { r: 0.55, a: -0.22 },
+    ];
+    for (const s of shape) {
+      const ra = ang + s.a;
+      const p = bv(ax + PROP_R * s.r * Math.cos(ra), az + PROP_R * s.r * Math.sin(ra));
+      if (p) pts.push(p);
+    }
+    if (pts.length < 3) continue;
+    ctx.fillStyle = 'rgba(220,225,235,0.55)';
+    ctx.beginPath();
+    ctx.moveTo(cx + pts[0].x, cy + pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(cx + pts[i].x, cy + pts[i].y);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.5; ctx.stroke();
+
+    const tipP = bv(ax + PROP_R * Math.cos(ang), az + PROP_R * Math.sin(ang));
+    const rootP = bv(ax + PROP_R * 0.2 * Math.cos(ang), az + PROP_R * 0.2 * Math.sin(ang));
+    if (tipP && rootP) {
+      ctx.strokeStyle = 'rgba(200,205,215,0.45)'; ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(cx + rootP.x, cy + rootP.y);
+      ctx.lineTo(cx + tipP.x, cy + tipP.y);
+      ctx.stroke();
+    }
+  }
+}
+
+// Rounded-rectangle ring helper
+function roundedRectRing(hw, hl, cr, N) {
+  const pts = [];
+  const segs = [
+    { len: 2*(hw-cr), type:'line', x1:-(hw-cr),z1:hl, x2:hw-cr,z2:hl },
+    { len: Math.PI*cr/2, type:'arc', cx:hw-cr, cz:hl-cr, a0:Math.PI/2, a1:0 },
+    { len: 2*(hl-cr), type:'line', x1:hw,z1:hl-cr, x2:hw,z2:-(hl-cr) },
+    { len: Math.PI*cr/2, type:'arc', cx:hw-cr, cz:-(hl-cr), a0:0, a1:-Math.PI/2 },
+    { len: 2*(hw-cr), type:'line', x1:hw-cr,z1:-hl, x2:-(hw-cr),z2:-hl },
+    { len: Math.PI*cr/2, type:'arc', cx:-(hw-cr), cz:-(hl-cr), a0:-Math.PI/2, a1:-Math.PI },
+    { len: 2*(hl-cr), type:'line', x1:-hw,z1:-(hl-cr), x2:-hw,z2:hl-cr },
+    { len: Math.PI*cr/2, type:'arc', cx:-(hw-cr), cz:hl-cr, a0:Math.PI, a1:Math.PI/2 },
+  ];
+  const totalLen = segs.reduce((s, seg) => s + seg.len, 0);
+  for (let i = 0; i < N; i++) {
+    const t = (i / N) * totalLen;
+    let dist = 0;
+    for (const seg of segs) {
+      if (dist + seg.len >= t) {
+        const lt = seg.len > 0 ? (t - dist) / seg.len : 0;
+        let x, z;
+        if (seg.type === 'line') {
+          x = seg.x1 + (seg.x2 - seg.x1) * lt;
+          z = seg.z1 + (seg.z2 - seg.z1) * lt;
+        } else {
+          const a = seg.a0 + (seg.a1 - seg.a0) * lt;
+          x = seg.cx + cr * Math.cos(a);
+          z = seg.cz + cr * Math.sin(a);
+        }
+        pts.push({ x, z });
+        break;
+      }
+      dist += seg.len;
+    }
+  }
+  return pts;
+}
+
+// 3D body — boxy fuselage with rounded-rect rings
+function drawBody(cx, cy, roll, pitch) {
+  const N = 32;
+  const ringDefs = [
+    { y: 3.5,  hw: BODY_W * 0.48, hl: BODY_L * 0.72 }, // R0: flat top
+    { y: 0.8,  hw: BODY_W * 0.64, hl: BODY_L * 0.92 }, // R1: shoulder (widest)
+    { y: -1.2, hw: BODY_W * 0.52, hl: BODY_L * 0.78 }, // R2: lower side
+    { y: -2.2, hw: BODY_W * 0.33, hl: BODY_L * 0.45 }, // R3: bottom
+  ];
+
+  const rings = ringDefs.map(def => {
+    const cr = Math.min(def.hw, def.hl) * 0.18;
+    const pts3D = roundedRectRing(def.hw, def.hl, cr, N);
+    return pts3D.map(pt => {
+      const p = rp(pt.x, def.y, pt.z, roll, pitch);
+      return p ? { x: cx + p.x, y: cy + p.y, z: p.z } : null;
+    }).filter(p => p !== null);
+  });
+
+  if (rings[1].length < 6) return;
+
+  function drawBand(upper, lower, fillStyle, strokeStyle) {
+    if (upper.length < 3 || lower.length < 3) return;
+    const n = Math.min(upper.length, lower.length);
+    ctx.fillStyle = fillStyle;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      if (i === 0) ctx.moveTo(upper[i].x, upper[i].y);
+      else ctx.lineTo(upper[i].x, upper[i].y);
+    }
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(lower[i].x, lower[i].y);
+    ctx.closePath(); ctx.fill();
+    if (strokeStyle) { ctx.strokeStyle = strokeStyle; ctx.lineWidth = 0.4; ctx.stroke(); }
+  }
+
+  drawBand(rings[3], rings[2], '#151a24', null);
+  drawBand(rings[2], rings[1], '#1e2634', 'rgba(255,255,255,0.06)');
+  drawBand(rings[1], rings[0], '#283240', 'rgba(255,255,255,0.08)');
+
+  // Flat top surface
+  if (rings[0].length > 3) {
+    const r0 = rings[0];
+    const avg = r0.reduce((s, p) => ({ x: s.x + p.x, y: s.y + p.y }), { x: 0, y: 0 });
+    avg.x /= r0.length; avg.y /= r0.length;
+    const maxR = Math.max(...r0.map(p => Math.hypot(p.x - avg.x, p.y - avg.y)));
+    const grad = ctx.createRadialGradient(avg.x - maxR * 0.1, avg.y - maxR * 0.25, 0, avg.x, avg.y, maxR);
+    grad.addColorStop(0, '#6a7888'); grad.addColorStop(0.4, '#3d4858');
+    grad.addColorStop(0.8, '#283240'); grad.addColorStop(1, '#1e2634');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    r0.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 0.6; ctx.stroke();
+  }
+
+  // Highlight stripe along centerline
+  const hlW = BODY_W * 0.16, hlL = BODY_L * 0.5;
+  const hlPts = [];
+  for (let i = 0; i < 16; i++) {
+    const t = i / 15, lz = -hlL + 2 * hlL * t;
+    const p = rp(0, 3.7, lz, roll, pitch);
+    if (p) hlPts.push({ x: cx + p.x, y: cy + p.y, z: p.z });
+  }
+  if (hlPts.length > 3) {
+    ctx.fillStyle = 'rgba(200,215,235,0.18)';
+    ctx.beginPath();
+    const z0 = hlPts[0].z, hw0 = Math.max(1.5, hlW * (FL / z0) * SCALE);
+    ctx.moveTo(cx + (hlPts[0].x || 0) - hw0, hlPts[0].y);
+    ctx.lineTo(cx + (hlPts[0].x || 0) + hw0, hlPts[0].y);
+    for (let i = 1; i < hlPts.length; i++) {
+      const hw = Math.max(1.5, hlW * (FL / hlPts[i].z) * SCALE);
+      ctx.lineTo(cx + hlPts[i].x + hw, hlPts[i].y);
+    }
+    for (let i = hlPts.length - 1; i >= 0; i--) {
+      const hw = Math.max(1.5, hlW * (FL / hlPts[i].z) * SCALE);
+      ctx.lineTo(cx + hlPts[i].x - hw, hlPts[i].y);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Shoulder edge line (R1)
+  if (rings[1].length > 3) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    rings[1].forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.closePath(); ctx.stroke();
+  }
+
+  // Panel seam on top
+  if (rings[0].length > 3) {
+    const fl = rp(-BODY_W * 0.35, 3.7, BODY_L * 0.48, roll, pitch);
+    const fr = rp(BODY_W * 0.35, 3.7, BODY_L * 0.48, roll, pitch);
+    if (fl && fr) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 0.4;
+      ctx.beginPath();
+      ctx.moveTo(cx + fl.x, cy + fl.y); ctx.lineTo(cx + fr.x, cy + fr.y);
+      ctx.stroke();
+    }
+  }
+}
+
+// Landing gear
+function drawLandingGear(cx, cy, roll, pitch) {
+  const gearY = -6, baseTopY = -1.2, spreadX = BODY_W * 0.55, spreadZ = 0;
+  for (const side of [-1, 1]) {
+    const topP = rp(side * spreadX, baseTopY, spreadZ, roll, pitch);
+    const botP = rp(side * spreadX, gearY, spreadZ + BODY_L * 0.1, roll, pitch);
+    const botP2 = rp(side * spreadX, gearY, spreadZ - BODY_L * 0.1, roll, pitch);
+    if (!topP || !botP || !botP2) continue;
+    const tx = cx + topP.x, ty = cy + topP.y;
+    const bx = cx + botP.x, by = cy + botP.y;
+    ctx.strokeStyle = '#3a4050'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke();
+    ctx.lineWidth = 0.5; ctx.strokeStyle = '#667078';
+    ctx.beginPath(); ctx.moveTo(tx + 0.5, ty); ctx.lineTo(bx + 0.5, by); ctx.stroke();
+    const bx2 = cx + botP2.x, by2 = cy + botP2.y;
+    ctx.strokeStyle = '#3a4050'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx2, by2); ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = '#5a6070'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(bx, by - 0.5); ctx.lineTo(bx2, by2 - 0.5); ctx.stroke();
+  }
+}
+
+// Ground shadow
+function drawShadow(cx, cy) {
+  const sp = project(0, GROUND_Y, 0);
+  if (!sp) return;
+  const sx = cx + sp.x, sy = cy + sp.y, sr = 22 * (FL / sp.z) * SCALE;
+  const grad = ctx.createRadialGradient(sx, sy, sr * 0.1, sx, sy, sr);
+  grad.addColorStop(0, 'rgba(0,0,0,0.35)'); grad.addColorStop(0.6, 'rgba(0,0,0,0.12)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.ellipse(sx, sy, sr, sr * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+// Navigation LEDs on arms
+function drawNavLED(cx, cy, roll, pitch, ax, az, isFront) {
+  const midX = ax * 0.55, midZ = az * 0.55;
+  const p = rp(midX, ARM_H + 0.8, midZ, roll, pitch);
+  if (!p) return;
+  const sx = cx + p.x, sy = cy + p.y;
+  const r = Math.max(1.2, 1.6 * (FL / p.z) * SCALE);
+  ctx.fillStyle = isFront ? '#00ff88' : '#ff3333';
+  ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(sx, sy, r * 0.4, 0, Math.PI * 2); ctx.fill();
+}
+
+// Main draw
+function draw(rollDeg, pitchDeg, propAngle) {
+  const W = cv.width, H = cv.height, cx = W / 2, cy = H / 2;
+  const roll = rollDeg * Math.PI / 180, pitch = pitchDeg * Math.PI / 180;
+
+  ctx.clearRect(0, 0, W, H);
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#d0d8e0'); sky.addColorStop(0.3, '#8098b0'); sky.addColorStop(0.6, '#1a3048'); sky.addColorStop(1, '#080e16');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+
+  drawGround(cx, cy);
+  drawShadow(cx, cy);
+
+  const items = ARMS.map(a => {
+    const ax = a.sx * ARM_LEN / SQ2, az = a.sz * ARM_LEN / SQ2;
+    const isFront = a.sz > 0;
+    const armOrgX = a.sx * BODY_W * 0.5, armOrgZ = a.sz * BODY_L * 0.5;
+    const bodyPt = rp(armOrgX, 0, armOrgZ, roll, pitch);
+    const armEnd = rp(ax, 0, az, roll, pitch);
+    const mBot   = rp(ax, MOTOR_HR * 0.25, az, roll, pitch);
+    const mTop   = rp(ax, MOTOR_HR, az, roll, pitch);
+    return { ...a, ax, az, isFront, bodyPt, armEnd, mBot, mTop };
+  });
+
+  const bodyC = rp(0, 0, 0, roll, pitch);
+
+  items.sort((a, b) => {
+    const za = a.armEnd ? a.armEnd.z : 999, zb = b.armEnd ? b.armEnd.z : 999;
+    return za - zb;
+  });
+
+  for (const item of items) {
+    const bodyPt = item.bodyPt || bodyC;
+    if (!item.armEnd || !bodyPt) continue;
+    const bx = cx + bodyPt.x, by = cy + bodyPt.y;
+    const mx = cx + item.armEnd.x, my = cy + item.armEnd.y;
+    drawArmPoly(cx, cy, bx, by, mx, my, item.isFront);
+    if (item.mBot) {
+      const sx = cx + item.mBot.x, sy = cy + item.mBot.y;
+      const mr = Math.max(2, MOTOR_R * (FL / item.mBot.z) * SCALE);
+      drawMotor(sx, sy, mr, item.isFront);
+    }
+    if (item.mTop) {
+      drawPropAt(cx, cy, item.ax, item.az, roll, pitch, propAngle, item.sx, item.mTop.z);
+    }
+    drawNavLED(cx, cy, roll, pitch, item.ax, item.az, item.isFront);
+  }
+
+  drawLandingGear(cx, cy, roll, pitch);
+  drawBody(cx, cy, roll, pitch);
+
+
+
+  // Center crosshair
+  ctx.strokeStyle = 'rgba(255,145,0,0.4)'; ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 10, cy); ctx.lineTo(cx - 3, cy);
+  ctx.moveTo(cx + 3, cy); ctx.lineTo(cx + 10, cy);
+  ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy - 3);
+  ctx.moveTo(cx, cy + 3); ctx.lineTo(cx, cy + 10);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,145,0,0.6)';
+  ctx.beginPath(); ctx.arc(cx, cy, 1.2, 0, Math.PI * 2); ctx.fill();
+}
+
+// State & animation
+let rollDeg = 0, pitchDeg = 0, armed = false;
+let propAngle = 0;
+const modes = ['自稳', '定高', '手动', '定点'];
+let mi = 0;
+
+function rw(v, r) { return Math.max(-r, Math.min(r, v + (Math.random() - 0.5) * 8)); }
+function update() {
+  const propSpeed = armed ? 0.55 : 0.15;
+  propAngle += propSpeed;
+  if (propAngle > Math.PI * 20) propAngle -= Math.PI * 20;
+
+  if (armed) { rollDeg = rw(rollDeg, 28); pitchDeg = rw(pitchDeg, 20); }
+  else { rollDeg *= 0.9; pitchDeg *= 0.9; }
+
+  const thr = armed ? Math.round(1500 + (Math.max(0, pitchDeg) / 20) * 500) : Math.round(1500 * 0.05 + 1000 * 0.95);
+  const yawVal = Math.round(1500 + (rollDeg / 28) * 500);
+  const pitVal = Math.round(1500 + (pitchDeg / 20) * 500);
+  const rolVal = Math.round(1500 + (rollDeg / 28) * 500);
+
+  draw(rollDeg, pitchDeg, propAngle);
+
+  const thrPct = Math.round((thr - 1000) / 10);
+  document.getElementById('thrVal').textContent = thrPct + '%';
+  document.getElementById('thrPwm').textContent = thr;
+  document.getElementById('thrFill').style.height = thrPct + '%';
+  document.getElementById('yawVal').textContent = yawVal;
+  document.getElementById('pitVal').textContent = pitVal;
+  document.getElementById('rolVal').textContent = rolVal;
+  document.getElementById('yawBar').style.width = ((yawVal - 1000) / 10) + '%';
+  document.getElementById('pitBar').style.width = ((pitVal - 1000) / 10) + '%';
+  document.getElementById('rolBar').style.width = ((rolVal - 1000) / 10) + '%';
+
+  document.getElementById('altVal').textContent = (Math.random() * 5).toFixed(1) + 'm';
+  document.getElementById('spdVal').textContent = (Math.random() * 3).toFixed(1) + 'm/s';
+  document.getElementById('headVal').textContent = 'HDG ' + Math.round(Math.random() * 360) + '°';
+  document.getElementById('gpsVal').textContent = 'GPS ' + Math.round(8 + Math.random() * 8);
+  document.getElementById('batVolt').textContent = (11.1 + Math.random() * 0.5).toFixed(1) + 'V';
+  document.getElementById('rssi').textContent = '-' + Math.round(75 + Math.random() * 15) + 'dB';
+
+  if (armed && Math.random() < 0.08) { mi = (mi + 1) % modes.length; document.getElementById('modeTag').textContent = modes[mi]; }
+}
+
+document.getElementById('screen').addEventListener('click', function(e) {
+  if (e.target.closest('.side-bar')) return;
+  armed = !armed;
+  const sq = document.getElementById('pwrSq'), mt = document.getElementById('modeTag');
+  if (armed) {
+    sq.classList.add('on'); sq.textContent = 'ON';
+    mt.textContent = '自稳';
+  } else {
+    sq.classList.remove('on'); sq.textContent = 'OFF';
+    mt.textContent = '----';
+  }
+});
+
+setInterval(update, 150);
+draw(0, 0, 0);
+</script>
+</body>
+</html>

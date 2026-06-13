@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoreFly 遥控器 UI (无地平仪)</title>
+<style>
+  .zoom-ctrl {
+    position: fixed; top: 12px; right: 16px; z-index: 9999;
+    background: #f0f0f5; border: 1px solid #c8c8d4; border-radius: 8px;
+    padding: 8px 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .zoom-ctrl label { color: #6b7280; font-size: 11px; font-family: monospace; }
+  .zoom-ctrl input[type=range] { width: 100px; accent-color: #0f766e; }
+  .zoom-ctrl button { background: #e4e4ec; color: #0f766e; border: 1px solid #0d9488; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 11px; }
+  .zoom-ctrl button:hover { background: #0d9488; color: #fff; }
+  .zoom-ctrl .val { color: #0f766e; font-size: 11px; min-width: 36px; text-align: center; }
+  .wrapper { transform: scale(1); transform-origin: top center; transition: transform 0.1s; }
+  :root {
+    --bg: #eef0f5; --panel: #e0e2ea; --border: #c8cad4;
+    --cyan: #0f766e; --orange: #d97706; --red: #dc2626; --green: #16a34a;
+    --white: #1a1a2e; --gray: #6b7280; --gray-dim: #c0c2cc;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #e0e2e8; display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; font-family: 'Microsoft YaHei','PingFang SC',sans-serif;
+  }
+  .remote {
+    display: flex; gap: 16px; align-items: center;
+    background: #f4f4fa; border-radius: 22px; padding: 24px 20px;
+    box-shadow: 0 0 0 2px #d8d8e0,0 0 0 4px #cccce0,0 18px 40px rgba(0,0,0,0.15);
+    position: relative;
+  }
+  .remote::before {
+    content: 'CoreFly 遥控器'; position: absolute; top: -28px; left: 50%;
+    transform: translateX(-50%); color: #9ca3af; font-size: 10px; letter-spacing: 3px;
+  }
+  .lcd-frame {
+    width: 320px; height: 240px; background: var(--bg); border-radius: 10px;
+    overflow: hidden; border: 3px solid #c8cad4; position: relative;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.08),0 0 0 5px #d8dae2,0 6px 20px rgba(0,0,0,0.12);
+  }
+  .lcd-frame::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg,rgba(255,255,255,0.3) 0%,transparent 40%,rgba(0,0,0,0.03) 100%);
+    pointer-events: none; z-index: 99; border-radius: 10px;
+  }
+  .screen { width:100%;height:100%;background:var(--bg);display:flex;flex-direction:column;padding:3px 5px;gap:2px;font-size:8px;position:relative;z-index:1; }
+
+  /* ── Top status bar ── */
+  .status-bar { display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:2px 6px;height:24px;flex-shrink:0; }
+  .status-bar .L,.status-bar .R { display:flex;align-items:center;gap:6px; }
+  .bat { display:flex;align-items:center;gap:3px;color:var(--cyan);font-size:10px; }
+  .bat .icon { width:20px;height:10px;border:1.5px solid var(--cyan);border-radius:2px;position:relative; }
+  .bat .icon::after { content:'';position:absolute;right:-3px;top:2px;width:2px;height:4px;background:var(--cyan);border-radius:1px; }
+  .bat .fill { height:100%;background:var(--cyan);border-radius:1px; }
+  .mods { display:flex;align-items:center;gap:6px; }
+  .mod { display:flex;align-items:center;gap:2px;font-size:8px;color:var(--gray); }
+  .mod .dot { width:6px;height:6px;border-radius:50%; }
+  .mod .dot.ok { background:var(--green); }
+  .mod .dot.err { background:var(--red); }
+  .mode-tag { padding:2px 8px;border-radius:3px;font-size:11px;font-weight:bold;letter-spacing:1px;color:var(--gray); }
+  .mode-tag.on { background:#ccfbf1;color:#0f766e;border:1px solid #0f766e; }
+
+  /* ── Main row ── */
+  .main-row { display:flex;gap:4px;flex:1;min-height:0; }
+
+  /* ── Left: vertical throttle bar ── */
+  .thr-col {
+    width:48px; display:flex; flex-direction:column; align-items:center;
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:4px; padding:4px 3px; gap:2px; flex-shrink:0;
+  }
+  .thr-col .thr-label { color:var(--gray); font-size:6px; letter-spacing:1px; }
+  .thr-col .thr-pct { color:var(--green); font-size:12px; font-weight:bold; line-height:1; }
+  .thr-vbar {
+    flex:1; width:18px; background:var(--gray-dim); border-radius:3px;
+    position:relative; overflow:hidden; min-height:20px;
+  }
+  .thr-vbar .fill {
+    position:absolute; bottom:0; left:0; right:0;
+    background:var(--green); border-radius:3px; transition:height 0.2s;
+  }
+  .thr-vbar .tick {
+    position:absolute; left:-3px; right:-3px; height:1px; background:rgba(0,0,0,0.10);
+  }
+
+  /* ── Center: telemetry cards ── */
+  .telemetry-wrap {
+    flex:1; background:var(--panel); border:1px solid var(--border);
+    border-radius:5px; display:flex; flex-direction:column;
+    padding:4px 6px; gap:3px;
+  }
+  .tele-card {
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:4px; padding:4px 8px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex:1;
+  }
+  .tele-card .tl { color:var(--gray); font-size:7px; letter-spacing:1px; }
+  .tele-card .tv { color:var(--white); font-size:12px; font-weight:bold; }
+  .tele-card .tv.accent { color:var(--cyan); }
+  .tele-card .tv.warn { color:var(--orange); }
+
+  /* ── Right sidebar ── */
+  .side-bar { width:68px;display:flex;flex-direction:column;gap:3px;flex-shrink:0; }
+  .chans { background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:5px 6px;display:flex;flex-direction:column;gap:3px; }
+  .cr { display:flex;align-items:center;justify-content:space-between; }
+  .cr .lb { color:var(--gray);font-size:9px; }
+  .cr .vl { color:var(--white);font-size:10px;font-weight:bold; }
+  .cbar { height:8px;background:var(--gray-dim);border-radius:4px;position:relative;overflow:hidden; }
+  .cbar .ctr { position:absolute;top:-2px;bottom:-2px;left:50%;width:1px;background:rgba(0,0,0,0.2);z-index:2; }
+  .cbar .f { position:absolute;top:0;height:100%;border-radius:3px;transition:left 0.2s,width 0.2s; }
+  .f.yaw { background:#d97706; }
+  .f.pit { background:var(--cyan); }
+  .f.rol { background:#7c3aed; }
+
+  /* ── Right info boxes ── */
+  .info-box {
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:4px; padding:5px; display:flex; flex-direction:column;
+    align-items:center; gap:4px; flex:1; justify-content:center;
+  }
+  .info-value { color:var(--orange); font-size:15px; font-weight:bold; }
+  .pwr-sq {
+    width:44px; height:24px; border-radius:4px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:9px; font-weight:bold; color:#fff;
+    transition:background 0.3s, box-shadow 0.3s;
+  }
+  .pwr-sq.off { background:var(--red); }
+  .pwr-sq.on { background:var(--green); box-shadow:0 0 8px rgba(22,163,74,0.5); animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 8px rgba(22,163,74,0.4)} 50%{box-shadow:0 0 14px rgba(22,163,74,0.7)} }
+
+  .gimbal { display:flex;flex-direction:column;gap:10px;justify-content:center; }
+  .g-dot { width:38px;height:38px;border:1.5px solid #c8cad4;border-radius:50%;background:radial-gradient(circle,#dddde8,#c8cad4);position:relative; }
+  .g-dot .p { width:3px;height:3px;border-radius:50%;position:absolute; }
+  .g-dot .lb { position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);font-size:6px;color:#9ca3af; }
+</style>
+</head>
+<body>
+<div class="zoom-ctrl">
+  <label>缩放</label>
+  <input type="range" min="50" max="200" value="100" oninput="document.querySelector('.wrapper').style.transform='scale('+(this.value/100)+')';document.querySelector('.val').textContent=this.value+'%'">
+  <span class="val">100%</span>
+  <button onclick="document.querySelector('input').value=100;document.querySelector('.wrapper').style.transform='scale(1)';document.querySelector('.val').textContent='100%'">重置</button>
+</div>
+<div class="wrapper">
+<div class="remote">
+  <div class="lcd-frame">
+    <div class="screen" id="screen">
+      <!-- Top status bar: battery + sensor status -->
+      <div class="status-bar">
+        <div class="L">
+          <div class="bat">
+            <span class="icon"><div class="fill" style="width:72%" id="batFill"></div></span>
+            <span id="batPct" style="color:var(--green);font-size:9px;font-weight:bold;">87%</span>
+          </div>
+        </div>
+        <div class="R">
+          <div class="mods">
+            <div class="mod"><span class="dot ok" id="modAtti"></span>姿态</div>
+            <div class="mod"><span class="dot ok" id="modBaro"></span>气压</div>
+            <div class="mod"><span class="dot ok" id="modComm"></span>通信</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main area -->
+      <div class="main-row">
+        <!-- Left: vertical throttle -->
+        <div class="thr-col">
+          <span class="thr-label">油门</span>
+          <div class="thr-vbar" id="thrVBar">
+            <div class="fill" style="height:0%" id="thrFill"></div>
+            <div class="tick" style="bottom:25%"></div>
+            <div class="tick" style="bottom:50%"></div>
+            <div class="tick" style="bottom:75%"></div>
+          </div>
+          <span class="thr-pct" id="thrPct">0%</span>
+        </div>
+
+        <!-- Center: channels (upper) + telemetry (lower) -->
+        <div class="telemetry-wrap" style="gap:4px;">
+          <!-- Upper: yaw/pitch/roll channels -->
+          <div class="chans" style="flex:1.4;padding:4px 6px;">
+            <div class="cr"><span class="lb">偏航</span><span class="vl" id="yawVal">0°</span></div>
+            <div class="cbar"><div class="ctr"></div><div class="f yaw" id="yawBar"></div></div>
+            <div class="cr" style="margin-top:5px;"><span class="lb">俯仰</span><span class="vl" id="pitVal">0°</span></div>
+            <div class="cbar"><div class="ctr"></div><div class="f pit" id="pitBar"></div></div>
+            <div class="cr" style="margin-top:5px;"><span class="lb">滚转</span><span class="vl" id="rolVal">0°</span></div>
+            <div class="cbar"><div class="ctr"></div><div class="f rol" id="rolBar"></div></div>
+          </div>
+          <!-- Lower: telemetry cards -->
+          <div class="tele-card">
+            <span class="tl">高度 ALT</span>
+            <span class="tv accent" id="altVal">0.0m</span>
+          </div>
+          <div class="tele-card">
+            <span class="tl">速度 SPD</span>
+            <span class="tv" id="spdVal">0.0 m/s</span>
+          </div>
+          <div class="tele-card">
+            <span class="tl">航向 HDG</span>
+            <span class="tv" id="headVal">0°</span>
+          </div>
+        </div>
+
+        <!-- Right: timer + status + system switch -->
+        <div class="side-bar" style="gap:4px;">
+          <div class="info-box" style="flex:1;">
+            <span style="color:var(--gray);font-size:6px;letter-spacing:1px;">飞行时间</span>
+            <span class="info-value" id="flyTimerMain">00:00</span>
+          </div>
+          <div class="info-box" style="flex:1;">
+            <span style="color:var(--gray);font-size:6px;letter-spacing:1px;">里程</span>
+            <span style="color:var(--white);font-size:14px;font-weight:bold;" id="flyDist">0.0m</span>
+          </div>
+          <div class="info-box" style="flex:1;">
+            <span class="mode-tag on" id="modeTag">自稳</span>
+          </div>
+          <div class="info-box" style="flex:1;">
+            <div class="pwr-sq off" id="pwrSq">OFF</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const modes=['自稳','定高','手动','定点'];let mi=0;
+let armed=false,thr=1000,yaw=1500,pit=1500,rol=1500;
+let flySec=0,flyDist=0,flyInt=null;
+
+function rw(v,r){return Math.max(-r,Math.min(r,v+(Math.random()-0.5)*8));}
+
+function update(){
+  if(armed){
+    pit=rw(pit,20);rol=rw(rol,28);
+    thr=Math.round(1500+(Math.max(0,pit)/20)*500);
+    yaw=Math.round(1500+(rol/28)*500);
+  } else {
+    thr=Math.round(thr*0.95+(1000)*0.05);
+    yaw=Math.round(yaw*0.95+(1500)*0.05);
+    pit=Math.round(pit*0.9);
+    rol=Math.round(rol*0.9);
+  }
+  const thrPct=Math.round((thr-1000)/10);
+
+  // Throttle
+  document.getElementById('thrPct').textContent=thrPct+'%';
+  document.getElementById('thrFill').style.height=thrPct+'%';
+
+  // Channels — convert to degrees, center-out bars
+  const yawDeg=Math.round((yaw-1500)/500*180);
+  const pitDeg=Math.round((pit-1500)/500*90);
+  const rolDeg=Math.round((rol-1500)/500*90);
+  document.getElementById('yawVal').textContent=yawDeg+'°';
+  document.getElementById('pitVal').textContent=pitDeg+'°';
+  document.getElementById('rolVal').textContent=rolDeg+'°';
+
+  function setBar(id,val,maxVal){
+    const pct=(val/maxVal)*50;
+    const bar=document.getElementById(id);
+    if(val<0){bar.style.left=(50+pct)+'%';bar.style.width=(-pct)+'%';}
+    else if(val>0){bar.style.left='50%';bar.style.width=pct+'%';}
+    else{bar.style.left='50%';bar.style.width='0';}
+  }
+  setBar('yawBar',yawDeg,180);
+  setBar('pitBar',pitDeg,90);
+  setBar('rolBar',rolDeg,90);
+
+  // Telemetry
+  document.getElementById('altVal').textContent=(Math.random()*5).toFixed(1)+'m';
+  const spd=Math.random()*3;
+  document.getElementById('spdVal').textContent=spd.toFixed(1)+' m/s';
+  document.getElementById('headVal').textContent=Math.round(Math.random()*360)+'°';
+  if(armed){flyDist+=spd*0.15;document.getElementById('flyDist').textContent=flyDist.toFixed(1)+'m';}
+  const batPct=Math.round(65+Math.random()*35);
+  document.getElementById('batPct').textContent=batPct+'%';
+  document.getElementById('batFill').style.width=batPct+'%';
+
+  // Sensor status — occasional flicker
+  ['modAtti','modBaro','modComm'].forEach(function(id){
+    const d=document.getElementById(id);
+    if(Math.random()<0.02)d.classList.toggle('ok');
+    d.classList.toggle('ok',Math.random()>0.05);
+  });
+
+  if(armed&&Math.random()<0.08)mi=(mi+1)%modes.length;
+}
+
+function fmtTime(s){const m=Math.floor(s/60),sc=s%60;return String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');}
+
+document.getElementById('screen').addEventListener('click',function(e){
+  if(e.target.closest('.side-bar'))return;
+  armed=!armed;
+  const p=document.getElementById('pwrSq'),t=document.getElementById('modeTag');
+  if(armed){
+    p.className='pwr-sq on';p.textContent='ON';
+    t.textContent='自稳';
+    flySec=0;flyDist=0;
+    document.getElementById('flyDist').textContent='0.0m';
+    flyInt=setInterval(function(){
+      flySec++;
+      const ts=fmtTime(flySec);
+      document.getElementById('flyTimerMain').textContent=ts;
+    },1000);
+  } else {
+    p.className='pwr-sq off';p.textContent='OFF';
+    t.textContent='----';
+    if(flyInt){clearInterval(flyInt);flyInt=null;}
+  }
+});
+
+setInterval(update,150);
+</script>
+</div></body>
+</html>

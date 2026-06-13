@@ -1,0 +1,44 @@
+﻿# Keil / MDK-ARM build outputs
+*.o
+*.d
+*.crf
+*.htm
+*.dep
+*.axf
+*.elf
+*.lst
+*.map
+*.iex
+*.lnp
+*.build_log.htm
+*.uvguix.*
+*.scvd
+JLinkLog.txt
+JLink*
+
+# STM32CubeMX generated (keep .ioc)
+mxproject
+*.tmp
+
+# Debug / Release output
+Debug/
+Release/
+*.hex
+*.bin
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Backup
+*.bak
+*.orig

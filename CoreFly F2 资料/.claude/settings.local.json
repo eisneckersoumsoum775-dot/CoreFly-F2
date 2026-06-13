@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import fpdf; print\\('fpdf ok'\\)\")",
+      "Bash(python -c \"import weasyprint; print\\('weasyprint ok'\\)\")",
+      "Bash(python -c \"import reportlab; print\\('reportlab ok'\\)\")"
+    ]
+  }
+}
