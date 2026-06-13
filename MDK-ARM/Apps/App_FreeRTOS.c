@@ -25,13 +25,18 @@ TaskHandle_t Ceshi_task_handle;
 
 
 // ==========================================
-// 2. 转换测试任务 (优先级：3)
+// 2. FOC 开环控制任务 — 电机1 (优先级：3, 周期 2ms/500Hz)
+//    TIM1 PWM 引脚:
+//      HIN1=PA8(TIM1_CH1)   LIN1=PE8(TIM1_CH1N)
+//      HIN2=PA9(TIM1_CH2)   LIN2=PB0(TIM1_CH2N)
+//      HIN3=PA10(TIM1_CH3)  LIN3=PB1(TIM1_CH3N)
+//    ARR=8400, 中心对齐, 等效 20kHz
 // ==========================================
-// void Zhuanhuan_task(void *pvParameters);
-// #define Zhuanhuan_TASK_STACK_SIZE 512
-// #define Zhuanhuan_TASK_PRIORITY 3
-// TaskHandle_t Zhuanhuan_task_handle;
-// #define Zhuanhuan_TASK_PERIOD 2            // 2ms 控制周期
+void Motor1_Ctrl_Task(void *pvParameters);
+#define Motor1_Ctrl_TASK_STACK_SIZE 512
+#define Motor1_Ctrl_TASK_PRIORITY 3
+TaskHandle_t Motor1_Ctrl_Task_handle;
+#define Motor1_Ctrl_TASK_PERIOD 2            // 2ms = 500Hz
 
 
 // ==========================================
@@ -121,8 +126,8 @@ void App_FreeRTOS_start(void)
     xTaskCreate(Ceshi_task, "Ceshi_task", Ceshi_TASK_STACK_SIZE, NULL, Ceshi_TASK_PRIORITY, &Ceshi_task_handle);
     xTaskCreate(Buzzer_task, "Buzzer_task", Buzzer_TASK_STACK_SIZE, NULL, Buzzer_TASK_PRIORITY, &Buzzer_task_handle);
     xTaskCreate(UartTest_task, "UartTest_task", UartTest_TASK_STACK_SIZE, NULL, UartTest_TASK_PRIORITY, &UartTest_task_handle);
-    // 启动 FOC 开环控制任务
-    // xTaskCreate(Zhuanhuan_task, "Zhuanhuan_task", Zhuanhuan_TASK_STACK_SIZE, NULL, Zhuanhuan_TASK_PRIORITY, &Zhuanhuan_task_handle);
+    // 启动 FOC 开环控制任务 (电机1)
+    xTaskCreate(Motor1_Ctrl_Task, "Motor1_Ctrl_Task", Motor1_Ctrl_TASK_STACK_SIZE, NULL, Motor1_Ctrl_TASK_PRIORITY, &Motor1_Ctrl_Task_handle);
     
     // 启动任务调度器
     vTaskStartScheduler();
@@ -183,53 +188,58 @@ void UartTest_task(void *pvParameters)
 }
 
 
-// // ==========================================
-// // 2. FOC 开环控制任务 (优先级：3, 周期 2ms)
-// // ==========================================
-// void Zhuanhuan_task(void *pvParameters)
-// {
-//     /* ── 1. 启动 TIM1 三路互补 PWM ── */
-//     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-//     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-//     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-//     HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
-//     HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
-//     HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
+// ==========================================
+// 2. FOC 开环控制任务 — 电机1 (优先级：3, 周期 2ms/500Hz)
+//    TIM1 PWM 引脚:
+//      HIN1=PA8(TIM1_CH1)   LIN1=PE8(TIM1_CH1N)
+//      HIN2=PA9(TIM1_CH2)   LIN2=PB0(TIM1_CH2N)
+//      HIN3=PA10(TIM1_CH3)  LIN3=PB1(TIM1_CH3N)
+//    ARR=8400, PSC=0, 中心对齐, 等效 PWM=20kHz
+// ==========================================
+void Motor1_Ctrl_Task(void *pvParameters)
+{
+    /* ── 1. 启动 TIM1 三路互补 PWM ── */
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+    HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
+    HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
+    HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
 
-//     /* ── 2. 初始化 FOC 算法 ──
-//        注意: PWM_ARR = 3500，必须与 TIM1->Period 一致！ */
-//     App_Motor_Init(&MyMotor, 12.0f, 3500);
-//     MyMotor.MathParam.V_q_target = 2.0f;   // 开环电压幅值 (从 4.0V 降到 2.0V 更安全)
-//     App_Motor_Set_Speed(&MyMotor, 0.02f);  // 目标电角速度 (rad/s)
+    /* ── 2. 初始化 FOC 算法 ──
+       ARR=8400 (与 TIM1 中心对齐 20kHz 一致) */
+    App_Motor_Init(&MyMotor, 12.0f, 8400);
+    MyMotor.MathParam.V_q_target = 4.0f;   // 开环电压幅值
+    App_Motor_Set_Speed(&MyMotor, 0.02f);  // 目标电角速度 (rad/s)
 
-//     /* ── 3. 运行状态打印 ── */
-//     printf("FOC OpenLoop Started, Vq=2.0V, Speed=0.02rad/s\n");
+    /* ── 3. 运行状态打印 ── */
+    printf("Motor1 FOC OpenLoop Started, Vbus=12V, ARR=8400, Vq=4.0V\n");
 
-//     TickType_t xLastWakeTime = xTaskGetTickCount();
-//     uint32_t print_cnt = 0;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    uint32_t print_cnt = 0;
 
-//     while (1)
-//     {
-//         /* 运行 FOC 计算: InvPark → SVPWM → 更新 CCR_a/b/c */
-//         App_Motor_Run_Task(&MyMotor);
+    while (1)
+    {
+        /* 运行 FOC 计算: InvPark → SVPWM → 更新 CCR_a/b/c */
+        App_Motor_Run_Task(&MyMotor);
 
-//         /* 更新硬件 PWM 比较值 */
-//         TIM1->CCR1 = MyMotor.MathParam.CCR_a;
-//         TIM1->CCR2 = MyMotor.MathParam.CCR_b;
-//         TIM1->CCR3 = MyMotor.MathParam.CCR_c;
+        /* 更新硬件 PWM 比较值 */
+        TIM1->CCR1 = MyMotor.MathParam.CCR_a;
+        TIM1->CCR2 = MyMotor.MathParam.CCR_b;
+        TIM1->CCR3 = MyMotor.MathParam.CCR_c;
 
-//         /* 每 25 次循环 (~50ms) 打印一次，避免串口溢出 */
-//         print_cnt++;
-//         if (print_cnt >= 25) {
-//             print_cnt = 0;
-//             printf(":%d,%d,%d,%.1f\n",
-//                    (int)MyMotor.MathParam.CCR_a,
-//                    (int)MyMotor.MathParam.CCR_b,
-//                    (int)MyMotor.MathParam.CCR_c,
-//                    MyMotor.MathParam.Theta * 1000.0f);
-//         }
+        /* 每 25 次循环 (~50ms) 打印一次，避免串口溢出 */
+        print_cnt++;
+        if (print_cnt >= 25) {
+            print_cnt = 0;
+            printf(":%d,%d,%d,%.1f\n",
+                   (int)MyMotor.MathParam.CCR_a,
+                   (int)MyMotor.MathParam.CCR_b,
+                   (int)MyMotor.MathParam.CCR_c,
+                   MyMotor.MathParam.Theta * 1000.0f);
+        }
 
-//         /* 绝对精准延时 2ms */
-//         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(Zhuanhuan_TASK_PERIOD));
-//     }
-// }
+        /* 绝对精准延时 2ms */
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(Motor1_Ctrl_TASK_PERIOD));
+    }
+}
