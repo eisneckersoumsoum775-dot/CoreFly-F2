@@ -1,4 +1,4 @@
-/*
+﻿/*
  * FreeRTOS V202212.00
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
@@ -56,6 +56,9 @@
 #define configTOTAL_HEAP_SIZE			( ( size_t ) ( 30 * 1024 ) )
 #define configMAX_TASK_NAME_LEN			( 10 )
 #define configUSE_TRACE_FACILITY		1
+
+/* 通知 stm32f4xx_it.c: FreeRTOS 已接管 SVCall/PendSV/SysTick 中断 */
+#define USE_FREERTOS
 #define configUSE_16_BIT_TICKS			0
 #define configIDLE_SHOULD_YIELD			1
 #define configUSE_MUTEXES				1

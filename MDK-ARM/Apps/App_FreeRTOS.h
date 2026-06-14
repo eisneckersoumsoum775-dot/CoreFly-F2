@@ -1,4 +1,4 @@
-#ifndef __APP_FREERTOS_H
+﻿#ifndef __APP_FREERTOS_H
 #define __APP_FREERTOS_H
 
 #include "FreeRTOS.h"
@@ -12,13 +12,17 @@
 
 #include "main.h"
 #include "BSP_USART.h"
+#include "BSP_MPU6050.h"
 #include "Alg_FOC_Math.h"
+#include "Alg_MPU6050_Data.h"
+#include "Alg_SPL06_Data.h"
+#include "BSP_SPL06.h"
 #include "App_Motor_Ctrl.h"
 
 
 
 /**
- * @brief 启动FreeRTOS任务
+ * @brief 鍚姩FreeRTOS浠诲姟
  * 
  */
 void App_FreeRTOS_start(void);

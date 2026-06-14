@@ -51,7 +51,7 @@ void MX_USART3_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART3_Init 2 */
-  /* ÖÐ¶Ï·¢ËÍÄ£Ê½£ºÓÅÏÈ¼¶ 6£¨>5£¬¿É°²È«µ÷ÓÃ FreeRTOS FromISR API£© */
+  /* ï¿½Ð¶Ï·ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½ 6ï¿½ï¿½>5ï¿½ï¿½ï¿½É°ï¿½È«ï¿½ï¿½ï¿½ï¿½ FreeRTOS FromISR APIï¿½ï¿½ */
   HAL_NVIC_SetPriority(USART3_IRQn, 6, 0);
   HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USER CODE END USART3_Init 2 */
